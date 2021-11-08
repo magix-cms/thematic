@@ -23,6 +23,11 @@
 			<version>1.0</version>
 			<phase>Stable</phase>
 		</release>
+		<bind>
+			<core>
+				<name>seo</name>
+			</core>
+		</bind>
 		<support>
 			<ticket href="https://github.com/magix-cms/magixcms/issues" />
 			<git href="https://github.com/magix-cms/magixcms" />
