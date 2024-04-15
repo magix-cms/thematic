@@ -25,97 +25,241 @@ var thematic = (function ($, undefined) {
             }
         });
     }
-    /**
-     * Initialise the display of notice message
-     * @param {html} m - message to display.
-     * @param {int|boolean} [timeout=false] - Time before hiding the message.
-     * @param {string|boolean} [sub=false] - Sub-controller name to select the container for the message.
-     */
-    function initAlert(m,timeout,sub) {
-        sub = typeof sub !== 'undefined' ? sub : false;
-        timeout = typeof timeout !== 'undefined' ? timeout : false;
-        if(sub) $.jmRequest.notifier = { cssClass : '.mc-message-'+sub };
-        $.jmRequest.initbox(m,{ display:true });
-        if(timeout) window.setTimeout(function () { $('.mc-message .alert').alert('close'); }, timeout);
-    }
-    /**
-     * Assign the correct success handler depending of the validation class attached to the form
-     * @param {string} f - id of the form.
-     * @param {string} controller - The name of the script to be called by te form.
-     */
-    function listFormDelete(f,controller){
-        var options = {
-            handler: "submit",
-            url: $(f).attr('action'),
-            method: 'post',
-            form: $(f),
-            resetForm: false,
+    function initGen(fd,controller,globalForm,tableForm){
+        var progressBar = new ProgressBar({loader: {type:'text', icon:'etc', class: ''}});
+        $.jmRequest({
+            handler: "ajax",
+            url: $('#add_img_thematic').attr('action'),
+            method: 'POST',
+            data:  fd,
+            processData: false,
+            contentType: false,
+            beforeSend: function () {
+                progressBar.init();
+            },
+            xhr: function() {
+                var xhr = $.ajaxSettings.xhr();
+                //Upload progress
+                xhr.oldResponse = '';
+                // Generation progress
+                xhr.upload.addEventListener("progress", function(e){
+                    if (e.lengthComputable) {
+                        let percentComplete = (e.loaded / e.total);
+                        //Do something with upload progress
+                        // let total = Math.round((e.total / (1024*1024))*10)/10;
+                        // let loaded = Math.round((e.loaded / (1024*1024))*10)/10;
+                        let options = {
+                            progress: percentComplete*30,
+                            state: 'upload complete at '+Math.round(percentComplete*100)+'%',
+                        }
+                        progressBar.update(options);
+                        if(percentComplete === 100) {
+                            progressBar.init({state: ''});
+                        }
+                    }
+                });
+                xhr.addEventListener("progress", function(e){
+                    if(!(xhr.readyState === 4 && xhr.status === 200)) {
+                        let new_response = xhr.responseText.substring(xhr.oldResponse.length);
+                        if(new_response.trim() !== '') {
+                            let result = JSON.parse(new_response.trim());
+                            let options = {
+                                progress: result.progress,
+                                state: result.message,
+                            }
+                            if(result.loader !== null) {
+                                options['loader'] = result.loader;
+                            }
+                            /*if(result.rendering) {
+                                options['loader'] = {type: 'fa', icon: 'cog', anim: 'spin', class: 'fa fa-cog fa-spin fa-fw'};
+                            }*/
+                            progressBar.update(options);
+                            xhr.oldResponse = xhr.responseText;
+                        }
+                    }
+                }, false);
+                return xhr;
+            },
+            dataFilter: function (response) {
+                var responses = response.split('{');
+                response = '{'+responses.pop();
+                return response;
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                progressBar.updateState('danger');
+                console.log(xhr);
+                console.log(ajaxOptions);
+                console.log(thrownError);
+            },
             success: function (d) {
-                if(d.debug !== undefined && d.debug !== '') {
-                    initAlert(d.debug);
-                }
-                else if(d.notify !== undefined && d.notify !== '') {
-                    initAlert(d.notify,4000);
-                }
-            }
-        };
-        options.resetForm = true;
-        //controller = sub?sub:controller.substr(1,(controller.indexOf('.')-1));
-        //controller = sub?sub:controller;
+                if(d.status == 'success') {
+                    progressBar.updateState('success');
+                    progressBar.update({state: d.message+' <span class="fa fa-check"></span>',loader: false});
 
-        options.success = function (d) {
-            $('#delete_modal_extend').modal('hide');
-            $('#delete_ranking_extend').modal('hide');
-            $('#delete_results_extend').modal('hide');
-            //$.jmRequest.notifier.cssClass = '.mc-message-'+controller;
-            $.jmRequest.notifier = {
-                cssClass : '.mc-message-'+controller
-            };
-            initAlert(d.notify,4000);
-            if(d.status && d.result) {
-                if(typeof d.result.id === 'string' || typeof d.result.id === 'number') {
-                    let ids = 0;
-                    if(typeof d.result.id === 'string') {
-                        ids = d.result.id.split(',');
-                    }
-                    else if(typeof d.result.id === 'number') {
-                        ids = [d.result.id];
-                    }
-                    let nbr = 0;
-                    let table = $('#table-'+controller);
-                    let container = null;
-
-                    for(var i = 0;i < ids.length; i++) {
-                        container = $('#'+controller+'_' + ids[i]).parent();
-                        $('#'+controller+'_' + ids[i]).next('.collapse').remove();
-                        $('#'+controller+'_' + ids[i]).remove();
-                        if(table.is("table")) {
-                            nbr = table.find('tbody').find('tr').length;
+                    $.jmRequest({
+                        handler: "ajax",
+                        url: controller+'&action=getImages',
+                        method: 'get',
+                        success: function (d) {
+                            $('.block-img').empty();
+                            $('.block-img').html(d.result);
+                            globalForm.initModals();
+                            tableForm.run();
+                            $('.block-img').find('.img-zoom').fancybox();
+                            initDefaultImg(controller);
+                            initSortable(controller);
                         }
-                        else if(table.is("ul") && !nbr) {
-                            nbr = table.children('li').length;
-                        }
-                    }
-
-                    container.trigger('change');
-
-                    if(table.is("table") && !nbr) {
-                        table.addClass('hide').next('.no-entry').removeClass('hide');
-                    }
-                    else if(table.is("ul") && !nbr) {
-                        table.next('.no-entry').removeClass('hide');
-                    }
-                    $('.nbr-'+controller).text(nbr);
+                    });
                 }
                 else {
-                    console.log(d.result);
+                    switch (d.error_code) {
+                        case 'access_denied':
+                            progressBar.updateState('danger');
+                            progressBar.update({state: d.message+' <span class="fa fa-ban"></span>',loader: false});
+                            break;
+                        case 'error_data':
+                            progressBar.updateState('warning');
+                            progressBar.update({state: '<span class="fa fa-warning"></span> '+d.message,loader: false});
+                            break;
+                    }
                 }
+            },
+            complete: function () {
+                progressBar.update({progress: 100});
+                progressBar.initHide();
+                //progressBar.element.parent().next().removeClass('hide');
             }
-        };
-        $.jmRequest(options);
+        });
     }
+
+    function initDropZone() {
+        var dropZoneId = "drop-zone";
+        var buttonId = "clickHere";
+        var mouseOverClass = "mouse-over";
+        var btnSend = $("#" + dropZoneId).find('button[type="submit"]');
+        //console.log(btnSend);
+        var dropZone = $("#" + dropZoneId);
+        var ooleft = dropZone.offset().left;
+        var ooright = dropZone.outerWidth() + ooleft;
+        var ootop = dropZone.offset().top;
+        var oobottom = dropZone.outerHeight() + ootop;
+        var inputFile = dropZone.find('input[type="file"]');
+        document.getElementById(dropZoneId).addEventListener("dragover", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.addClass(mouseOverClass);
+            var x = e.pageX;
+            var y = e.pageY;
+
+            if (!(x < ooleft || x > ooright || y < ootop || y > oobottom)) {
+                inputFile.offset({ top: y - 15, left: x - 100 });
+            } else {
+                inputFile.offset({ top: -400, left: -400 });
+            }
+
+        }, true);
+
+        if (buttonId !== "") {
+            var clickZone = $("#" + buttonId);
+
+            var oleft = clickZone.offset().left;
+            var oright = clickZone.outerWidth() + oleft;
+            var otop = clickZone.offset().top;
+            var obottom = clickZone.outerHeight() + otop;
+
+            $("#" + buttonId).mousemove(function (e) {
+                var x = e.pageX;
+                var y = e.pageY;
+                if (!(x < oleft || x > oright || y < otop || y > obottom)) {
+                    inputFile.offset({ top: y - 15, left: x - 160 });
+                } else {
+                    inputFile.offset({ top: -400, left: -400 });
+                }
+            });
+        }
+
+        $("#" + dropZoneId).find('input[type="file"]').change(function(){
+            var inputVal = $(this).val();
+            if(inputVal === '') {
+                $(btnSend).prop('disabled',true);
+            } else {
+                $(btnSend).prop('disabled',false);
+            }
+        });
+
+        document.getElementById(dropZoneId).addEventListener("drop", function (e) {
+            $("#" + dropZoneId).removeClass(mouseOverClass);
+        }, true);
+    }
+
+    function initDefaultImg(controller) {
+        $('.make_default').off().on('click', function(){
+            var self = this,
+                dflt = $('.default.in'),
+                id = $(this).data('id');
+
+            $('.default').removeClass('in');
+            $('.make-default').removeClass('hide');
+            $(this).parent().addClass('hide').prev().addClass('in').find('.fa').attr('class','fa fa-spinner fa-pulse');
+
+            $.jmRequest({
+                handler: "ajax",
+                url: controller+'&action=setImgDefault',
+                data: {id_img: id},
+                method: 'post',
+                success: function (d) {
+                    if(!d.status) {
+                        $(self).parent().removeClass('hide').prev().removeClass('in');
+                        dflt.addClass('in').next().addClass('hide');
+                    }
+
+                    $(self).parent().prev().find('.fa').attr('class','fa fa-check text-success');
+                }
+            });
+            return false;
+        });
+
+        $('#gallery-pages .sortable').off().on('change',function(){
+            var dflt = $('.default.in');
+            if(!dflt.length) {
+                $.jmRequest({
+                    handler: "ajax",
+                    url: controller+'&action=getImgDefault',
+                    method: 'get',
+                    success: function (d) {
+                        $('#image_'+d).find('.default').addClass('in').next().addClass('hide');
+                    }
+                });
+            }
+        });
+    }
+
+    function initSortable(controller) {
+        $( ".row.sortable" ).sortable({
+            items: "> div",
+            cursor: "move",
+            update: function(){
+                var serial = $( ".sortable" ).sortable('serialize');
+                $.jmRequest({
+                    handler: "ajax",
+                    url: controller+'&action=orderImages',
+                    method: 'POST',
+                    data : serial,
+                    success:function(e){
+                        $.jmRequest.initbox(e,{
+                                display: false
+                            }
+                        );
+                    }
+                });
+            }
+        });
+        $( ".row.sortable" ).disableSelection();
+    }
+
     return {
         run: function(controller){
+            parentPages();
             $( ".ui-sortable" ).sortable({
                 items: "> tr",
                 cursor: "move",
@@ -138,91 +282,47 @@ var thematic = (function ($, undefined) {
             });
             $( ".ui-sortable" ).disableSelection();
         },
-        runAdd : function(iso){
-            parentPages();
-            $('#league_id').on('focusout',function(){
+        runAdd : function(){
+            if($('#parent_id').val() !== ''){
+                var id = $('#parent_id').val();
+                var cus = $('#filter-pages').find('li[data-value="'+id+'"]');
+                if(!cus.length) {
+                    $('#parent').bootstrapSelect('clear');
+                } else {
+                    var cu = $(cus[0]);
+                    $('#parent').bootstrapSelect('select',cu);
+                }
+            }
+            $('#parent_id').on('focusout',function(){
                 var id = $(this).val();
                 if(id !== '') {
-                    var cus = $('#api_league_id').val(id);
-                }else{
-                    $('#api_league_id').val('');
-                }
-            });
-            $('.date-input-picker').datetimepicker({
-                format: 'DD/MM/YYYY',
-                locale: iso,
-                icons: {
-                    date: 'fa fa-calendar',
-                    up: 'fa fa-chevron-up',
-                    down: 'fa fa-chevron-down',
-                    previous: 'fa fa-chevron-left',
-                    next: 'fa fa-chevron-right',
-                    today: 'fa fa-calendar-check-o',
-                    clear: 'fa fa-trash-o',
-                    close: 'fa fa-close'
-                }
-            });
-            $('.year-input-picker').datetimepicker({
-                viewMode: 'years',
-                format: 'YYYY',
-                locale: iso,
-                icons: {
-                    date: 'fa fa-calendar',
-                    up: 'fa fa-chevron-up',
-                    down: 'fa fa-chevron-down',
-                    previous: 'fa fa-chevron-left',
-                    next: 'fa fa-chevron-right',
-                    today: 'fa fa-calendar-check-o',
-                    clear: 'fa fa-trash-o',
-                    close: 'fa fa-close'
-                }
-            });
-            $('#delete_form_extend').validate({
-                ignore: [],
-                onsubmit: true,
-                event: 'submit',
-                submitHandler: function(f,e) {
-                    e.preventDefault();
-                    listFormDelete(f,'phase');
-                    return false;
-                }
-            });
-            $('#delete_form_ranking_extend').validate({
-                ignore: [],
-                onsubmit: true,
-                event: 'submit',
-                submitHandler: function(f,e) {
-                    e.preventDefault();
-                    listFormDelete(f,'ranking_group');
-                    return false;
-                }
-            });
-            $('#delete_form_results_extend').validate({
-                ignore: [],
-                onsubmit: true,
-                event: 'submit',
-                submitHandler: function(f,e) {
-                    e.preventDefault();
-                    listFormDelete(f,'results');
-                    return false;
-                }
-            });
-            $('.extend_modal').each(function(){
-                $(this).off().on('click',function(e){
-                    e.preventDefault();
-                    var modal = $(this).data('target'),
-                        controller = $(this).data('controller'),
-                        //sub = $(this).data('sub') ? $(this).data('sub') : false,
-                        id = $(this).data('id') ? $(this).data('id') : false;
-
-                    if(modal && id && controller) {
-                        $(modal+' input[type="hidden"]').val(id);
-                        $(modal).modal('show');
+                    var cus = $('#filter-pages').find('li[data-value="'+id+'"]');
+                    if(!cus.length) {
+                        $('#parent').bootstrapSelect('clear');
+                        $('#parent_id').val('');
                     } else {
-                        $('#error_modal').modal('show');
+                        var cu = $(cus[0]);
+                        $('#parent').bootstrapSelect('select',cu);
                     }
-                });
+                }
             });
+        },
+        runEdit: function(globalForm,tableForm,controller){
+            parentPages();
+            $('.progress').hide();
+            $('.form-gen').on('submit', function(e) {
+                e.preventDefault();
+                var fd = new FormData(this);
+                initGen(fd,controller,globalForm,tableForm);
+                return false;
+            });
+            //$('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+            //if($(e.target).attr('href') === '#images') {
+            //initDropZone();
+            initDefaultImg(controller);
+            initSortable(controller);
+            //}
+            //});
         }
     };
 })(jQuery);

@@ -1,0 +1,24 @@
+/*
+ * Rules for advantage
+ */
+// Compiler options
+@import (reference) "mixins";
+/*--------------------------*\
+----- Company advantages -----
+\*--------------------------*/
+@media (min-width: .breakpoint(sm)[min]) {
+  #thematic #gallery {
+    max-width: 50%;
+    float: left;
+    margin-right: 2rem;
+  }
+}
+@media (min-width: .breakpoint(md)[min]) {
+  .content {
+    padding-left: 3rem;
+    border-left: 1px solid var(--smooth-grey);
+  }
+  #thematic #gallery {
+    max-width: 33.33333333333%;
+  }
+}

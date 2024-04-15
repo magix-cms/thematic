@@ -39,7 +39,7 @@
 
     <script type="text/javascript">
         $(function(){
-            if (typeof pages == "undefined")
+            if (typeof thematic == "undefined")
             {
                 console.log("pages is not defined");
             }else{

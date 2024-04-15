@@ -7,14 +7,14 @@ include_once ('dbadmin.php');
 class plugins_thematic_admin extends plugins_thematic_dbadmin{
     public $edit, $action, $tabs, $search, $plugin, $controller;
     protected $message, $template, $header, $data, $modelLanguage, $collectionLanguage, $order, $upload, $config, $imagesComponent, $modelPlugins,$routingUrl,$makeFiles,$finder,$plugins, $xml, $sitemap;
-    public $id_tc,$parent_id,$content,$pages,$img,$iso,$del_img,$ajax,$tableaction,$tableform,$offset,$name_img,$menu_tc,$type;
-
+    public $id_tc,$parent_id,$content,$pages,$img_multiple,$iso,$del_img,$ajax,$tableaction,$tableform,$offset,$name_img,$menu_tc,$type,$id_img;
+    protected component_core_feedback $progress;
     public $tableconfig = array(
         'all' => array(
             'id_tc',
             'name_tc' => array('title' => 'name'),
             'parent_tc' => array('col' => 'name_tc', 'title' => 'name'),
-            'img_tc' => array('type' => 'bin', 'input' => null, 'class' => ''),
+            'default_img' => array('title' => 'img','type' => 'bin', 'input' => null, 'class' => ''),
             'resume_tc' => array('type' => 'bin', 'input' => null),
             'content_tc' => array('type' => 'bin', 'input' => null),
             'seo_title_tc' => array('title' => 'seo_title', 'class' => '', 'type' => 'bin', 'input' => null),
@@ -25,7 +25,7 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
         'parent' => array(
             'id_tc',
             'name_tc' => array('title' => 'name'),
-            'img_tc' => array('type' => 'bin', 'input' => null, 'class' => ''),
+            'default_img' => array('title' => 'img','type' => 'bin', 'input' => null, 'class' => ''),
             'resume_tc' => array('class' => 'fixed-td-lg', 'type' => 'bin', 'input' => null),
             'content_tc' => array('class' => 'fixed-td-lg', 'type' => 'bin', 'input' => null),
             'seo_title_tc' => array('title' => 'seo_title', 'class' => 'fixed-td-lg', 'type' => 'bin', 'input' => null),
@@ -93,6 +93,8 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
         // --- Image Upload
         if (isset($_FILES['img']["name"])) $this->img = http_url::clean($_FILES['img']["name"]);
         if (http_request::isPost('name_img')) $this->name_img = http_url::clean($_POST['name_img']);
+        if (isset($_FILES['img_multiple']["name"])) $this->img_multiple = ($_FILES['img_multiple']["name"]);
+        if (http_request::isPost('id_img')) $this->id_img = $formClean->simpleClean($_POST['id_img']);
 
         // --- Recursive Actions
         if (http_request::isGet('thematic'))  $this->pages = $formClean->arrayClean($_GET['league']);
@@ -178,10 +180,7 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
             case 'content':
             case 'root':
                 parent::insert(
-                    array(
-                        'context' => $data['context'],
-                        'type' => $data['type']
-                    ),
+                    $data['type'],
                     $data['data']
                 );
                 break;
@@ -212,16 +211,19 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
             case 'page':
             case 'content':
             case 'img':
-            case 'imgContent':
             case 'pageActiveMenu':
             case 'root':
                 parent::update(
-                    array(
-                        'context' => $data['context'],
-                        'type' => $data['type']
-                    ),
+                    $data['type'],
                     $data['data']
                 );
+            break;
+            case 'imageDefault':
+                parent::update(
+                    $data['type'],
+                    $data['data']
+                );
+                $this->message->json_post_response(true,'update');
                 break;
         }
     }
@@ -279,15 +281,9 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
      * @throws Exception
      */
     private function setItemData($data){
-        //return $this->getItems('page',$this->edit, 'all',false);
-        $imgPath = $this->upload->imgBasePath('upload/thematic');
         $arr = array();
         $conf = array();
-        $fetchConfig = $this->imagesComponent->getConfigItems(array('module_img'=>'plugins','attribute_img'=>'thematic'));
-        $imgPrefix = $this->imagesComponent->prefix();
-
         foreach ($data as $page) {
-
             /*$publicUrl = !empty($page['url_tc']) ? $this->routingUrl->getBuildUrl(array(
                     'type'      =>  'pages',
                     'iso'       =>  $page['iso_lang'],
@@ -300,23 +296,6 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
             if (!array_key_exists($page['id_tc'], $arr)) {
                 $arr[$page['id_tc']] = array();
                 $arr[$page['id_tc']]['id_tc'] = $page['id_tc'];
-                $arr[$page['id_tc']]['id_parent'] = $page['id_parent'];
-                $img_tc = pathinfo($page['img_tc']);
-                $arr[$page['id_tc']]['img_tc'] = $img_tc['filename'];
-                if($page['img_tc'] != null) {
-                    if(file_exists($imgPath.DIRECTORY_SEPARATOR.$page['id_tc'].DIRECTORY_SEPARATOR.$page['img_tc'])){
-                        $originalSize = getimagesize($imgPath.DIRECTORY_SEPARATOR.$page['id_tc'].DIRECTORY_SEPARATOR.$page['img_tc']);
-                        $arr[$page['id_tc']]['imgSrc']['original']['img'] = $page['img_tc'];
-                        $arr[$page['id_tc']]['imgSrc']['original']['width'] = $originalSize[0];
-                        $arr[$page['id_tc']]['imgSrc']['original']['height'] = $originalSize[1];
-                    }
-                    foreach ($fetchConfig as $key => $value) {
-                        $size = getimagesize($imgPath.DIRECTORY_SEPARATOR.$page['id_tc'].DIRECTORY_SEPARATOR.$imgPrefix[$value['type_img']] . $page['img_tc']);
-                        $arr[$page['id_tc']]['imgSrc'][$value['type_img']]['img'] = $imgPrefix[$value['type_img']] . $page['img_tc'];
-                        $arr[$page['id_tc']]['imgSrc'][$value['type_img']]['width'] = $size[0];
-                        $arr[$page['id_tc']]['imgSrc'][$value['type_img']]['height'] = $size[1];
-                    }
-                }
                 $arr[$page['id_tc']]['menu_tc'] = $page['menu_tc'];
                 $arr[$page['id_tc']]['date_register'] = $page['date_register'];
             }
@@ -328,9 +307,6 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
                 'url_tc'         => $page['url_tc'],
                 'resume_tc'      => $page['resume_tc'],
                 'content_tc'     => $page['content_tc'],
-                'alt_img'     		=> $page['alt_img'],
-                'title_img'     	=> $page['title_img'],
-                'caption_img'       => $page['caption_img'],
                 'seo_title_tc'   => $page['seo_title_tc'],
                 'seo_desc_tc'    => $page['seo_desc_tc'],
                 'published_tc'   => $page['published_tc'],
@@ -369,8 +345,8 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
                 );
             }
 
-            $contentPage = $this->getItems('content', array('id_tc' => $id, 'id_lang' => $lang), 'one', false);
-
+            $contentPage = $this->getItems('content', array('id' => $id, 'id_lang' => $lang), 'one', false);
+            //print_r($contentPage);
             if ($contentPage != null) {
                 $this->upd(
                     array(
@@ -486,7 +462,7 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
                     }
                     break;
                 case 'edit':
-                    if(isset($this->img) || isset($this->name_img)){
+                    /*if(isset($this->img) || isset($this->name_img)){
                         $defaultLanguage = $this->collectionLanguage->fetchData(array('context' => 'one', 'type' => 'default'));
                         $page = $this->getItems('pageLang', array('id' => $this->id_tc, 'iso' => $defaultLanguage['iso_lang']), 'one', false);
                         $settings = array(
@@ -547,6 +523,60 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
                         $this->template->assign('page',$setEditData[$this->id_tc]);
                         $display = $this->template->fetch('brick/img.tpl');
                         $this->message->json_post_response(true, 'update',$display);
+                    }*/
+                    if (isset($this->img_multiple)) {
+                        $this->template->configLoad();
+                        $this->progress = new component_core_feedback($this->template);
+
+                        usleep(200000);
+                        $this->progress->sendFeedback(array('message' => $this->template->getConfigVars('control_of_data'), 'progress' => 30));
+
+                        $defaultLanguage = $this->collectionLanguage->fetchData(array('context' => 'one', 'type' => 'default'));
+                        $page = $this->getItems('content', ['id' => $this->id_tc, 'id_lang' => $defaultLanguage['id_lang']], 'one', false);
+                        //print_r($page);
+                        $lastIndex = $this->getItems('lastImgId', ['id_tc' => $this->id_tc], 'one', false);
+                        $lastIndex['index'] = $lastIndex['index'] ?? 0;
+
+                        $resultUpload = $this->upload->multipleImageUpload(
+                            'thematic','thematic','upload/thematic',["$this->id_tc"],[
+                            'name' => http_url::clean($page['name_tc']),
+                            'suffix' => (int)$lastIndex['index'],
+                            'suffix_increment' => true,
+                            'progress' => $this->progress,
+                            'template' => $this->template
+                        ]);
+
+                        if (!empty($resultUpload)) {
+                            $totalUpload = count($resultUpload);
+                            $percent = $this->progress->progress;
+                            $preparePercent = (90 - $percent) / $totalUpload;
+                            $i = 1;
+
+                            foreach ($resultUpload as $value) {
+                                if ($value['status']) {
+                                    $percent = $percent + $preparePercent;
+
+                                    usleep(200000);
+                                    $this->progress->sendFeedback(['message' => sprintf($this->template->getConfigVars('creating_records'),$i,$totalUpload), 'progress' => $percent]);
+
+                                    $this->insert('img',[
+                                        'id_tc' => $this->id_tc,
+                                        'name_img' => $value['file']
+                                    ]);
+                                }
+                                $i++;
+                            }
+
+                            usleep(200000);
+                            $this->progress->sendFeedback(array('message' => $this->template->getConfigVars('creating_thumbnails_success'), 'progress' => 90));
+
+                            usleep(200000);
+                            $this->progress->sendFeedback(array('message' => $this->template->getConfigVars('upload_done'), 'progress' => 100, 'status' => 'success'));
+                        }
+                        else {
+                            usleep(200000);
+                            $this->progress->sendFeedback(array('message' => $this->template->getConfigVars('creating_thumbnails_error'), 'progress' => 100, 'status' => 'error', 'error_code' => 'error_data'));
+                        }
                     }
                     elseif (isset($this->id_tc)) {
                         $this->saveContent($this->id_tc);
@@ -562,10 +592,11 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
                         $setEditData = $this->getItems('page', array('edit'=>$this->edit),'all',false);
                         $setEditData = $this->setItemData($setEditData);
                         $this->template->assign('page',$setEditData[$this->edit]);
-                        $this->data->getScheme(array('mc_thematic','mc_thematic_content'),array('id_tc','name_tc','img_tc','resume_tc','content_tc','seo_title_tc','seo_desc_tc','menu_tc','date_register'),$this->tableconfig['parent']);
+                        $this->data->getScheme(array('mc_thematic','mc_thematic_content'),array('id_tc','name_tc','resume_tc','content_tc','seo_title_tc','seo_desc_tc','menu_tc','date_register'),$this->tableconfig['parent']);
                         $this->getItems('pagesChild',$this->edit,'all');
                         $defaultLanguage = $this->collectionLanguage->fetchData(array('context'=>'one','type'=>'default'));
                         $this->getItems('pagesSelect',array('default_lang'=>$defaultLanguage['id_lang']),'all');
+                        $this->getItems('img', $this->edit, 'all');
 
                         $this->template->display('edit.tpl');
                     }
@@ -577,6 +608,27 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
                                 'type' => 'order'
                             )
                         );
+                    }
+                    break;
+                case 'setImgDefault':
+                    if (isset($this->id_img)) {
+                        $this->upd(array(
+                            'type' => 'imageDefault',
+                            'data' => array('id' => $this->edit, 'id_img' => $this->id_img)
+                        ));
+                    }
+                    break;
+                case 'getImgDefault':
+                    if (isset($this->edit)) {
+                        $imgDefault = $this->getItems('imgDefault', $this->edit, 'one', false);
+                        print $imgDefault['id_img'];
+                    }
+                    break;
+                case 'getImages':
+                    if (isset($this->edit)) {
+                        $this->getItems('img', $this->edit, 'all');
+                        $display = $this->template->fetch('brick/img.tpl');
+                        $this->message->json_post_response(true, '', $display);
                     }
                     break;
                 case 'delete':
@@ -649,7 +701,7 @@ class plugins_thematic_admin extends plugins_thematic_dbadmin{
             $this->template->assign('contentData',$this->setRootData());
             $defaultLanguage = $this->collectionLanguage->fetchData(array('context'=>'one','type'=>'default'));
             $this->getItems('pages',array('default_lang'=>$defaultLanguage['id_lang']),'all',true,true);
-            $this->data->getScheme(array('mc_thematic','mc_thematic_content'),array('id_tc','name_tc','img_tc','resume_tc','content_tc','seo_title_tc','seo_desc_tc','menu_tc','date_register'),$this->tableconfig['parent']);
+            $this->data->getScheme(array('mc_thematic','mc_thematic_content'),array('id_tc','name_tc','resume_tc','content_tc','seo_title_tc','seo_desc_tc','menu_tc','date_register'),$this->tableconfig['parent']);
             $this->template->display('index.tpl');
         }
     }

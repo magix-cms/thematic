@@ -36,6 +36,12 @@
                     </div>
                     <div role="tabpanel" class="tab-pane" id="image">
                         {include file="form/img.tpl" controller="thematic"}
+                        <div id="gallery-pages" class="block-img">
+                            {if $img != null}
+                                {*<pre>{print_r($img)}</pre>*}
+                                {include file="brick/img.tpl" data=$img}
+                            {/if}
+                        </div>
                         {*<pre>{$page|print_r}</pre>*}
                     </div>
                     <div role="tabpanel" class="tab-pane tab-table" id="child">
@@ -66,10 +72,8 @@
         libjs/vendor/src/bootstrap-select.js,
         libjs/vendor/filterlist.min.js,
         {baseadmin}/template/js/table-form.min.js,
+        libjs/vendor/progressBar.min.js,
         {baseadmin}/template/js/img-drop.min.js,
-        libjs/vendor/moment.min.js,
-        libjs/vendor/datetimepicker/{iso}.js,
-        libjs/vendor/bootstrap-datetimepicker.min.js,
         plugins/thematic/js/admin.min.js
     {/strip}{/capture}
     {script src=$smarty.capture.scriptForm type="javascript"}
@@ -82,12 +86,12 @@
             }else{
                 tableForm.run(controller);
             }
-            if (typeof thematic === "undefined")
+            if (typeof thematic == "undefined")
             {
                 console.log("thematic is not defined");
             }else{
-                //pages.run(controller);
-                thematic.runAdd(iso);
+                var edit = "{$smarty.get.edit}";
+                thematic.runEdit(globalForm,tableForm,controller+'&edit='+edit);
             }
         });
     </script>

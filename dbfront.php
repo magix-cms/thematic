@@ -24,51 +24,72 @@ class plugins_thematic_dbfront
                         break;
                     case 'langs':
                         $sql = 'SELECT
-									h.*,
-									c.name_tc,
-									c.url_tc,
-									c.resume_tc,
-									c.content_tc,
-									c.published_tc,
-									COALESCE(c.alt_img, c.name_tc) as alt_img,
-									COALESCE(c.title_img, c.alt_img, c.name_tc) as title_img,
-									COALESCE(c.caption_img, c.title_img, c.alt_img, c.name_tc) as caption_img,
-       								COALESCE(c.seo_title_tc, c.name_tc) as seo_title_tc,
-       								COALESCE(c.seo_desc_tc, c.resume_tc) as seo_desc_tc,
-       								li.title_tc,
-       								li.active_tc,
+									p.*,
+									pc.name_tc,
+									pc.title_tc,
+								   	pc.url_tc,
+								   	pc.resume_tc,
+								   	pc.content_tc,
+								   	pc.published_tc,
+								   	pc.last_update,
+								   	img.name_img,
+                                    COALESCE(pc.title_tc, pc.name_tc) as alt_img,
+                                    COALESCE(pc.title_tc, pc.name_tc) as title_img,
+       								COALESCE(pc.seo_title_tc, pc.name_tc) as seo_title_tc,
+       								COALESCE(pc.seo_desc_tc, pc.resume_tc) as seo_desc_tc,
        								lang.id_lang,
-									lang.iso_lang
-								FROM mc_thematic AS h
-								JOIN mc_thematic_content AS c ON(h.id_tc = c.id_tc) 
-								left join mc_thematic_info AS li ON(h.id_tc = li.id_tc)
-								JOIN mc_lang AS lang ON(c.id_lang = lang.id_lang) 
-								WHERE h.id_tc = :id AND c.published_tc = 1';
+									lang.iso_lang,
+									lang.default_lang
+								FROM mc_thematic AS p
+								JOIN mc_thematic_content AS pc ON(p.id_tc = pc.id_tc) 
+                                LEFT JOIN mc_thematic_img AS img ON (p.id_tc = img.id_tc)
+								JOIN mc_lang AS lang ON(pc.id_lang = lang.id_lang) 
+								WHERE p.id_tc = :id AND pc.published_tc = 1';
                         break;
                     case 'pages':
                         $config["conditions"] ? $conditions = $config["conditions"] : $conditions = '';
                         $sql = "SELECT
 									p.*,
-									c.name_tc,
-									c.title_tc,
-								   	c.url_tc,
-								   	c.resume_tc,
-								   	c.content_tc,
-								   	c.published_tc,
-								   	c.last_update,
-       								COALESCE(c.alt_img, c.name_tc) as alt_img,
-									COALESCE(c.title_img, c.alt_img, c.name_tc) as title_img,
-									COALESCE(c.caption_img, c.title_img, c.alt_img, c.name_tc) as caption_img,
-       								COALESCE(c.seo_title_tc, c.name_tc) as seo_title_tc,
-       								COALESCE(c.seo_desc_tc, c.resume_tc) as seo_desc_tc,
+									pc.name_tc,
+									pc.title_tc,
+								   	pc.url_tc,
+								   	pc.resume_tc,
+								   	pc.content_tc,
+								   	pc.published_tc,
+								   	pc.last_update,
+								   	img.name_img,
+                                    COALESCE(pc.title_tc, pc.name_tc) as alt_img,
+                                    COALESCE(pc.title_tc, pc.name_tc) as title_img,
+       								COALESCE(pc.seo_title_tc, pc.name_tc) as seo_title_tc,
+       								COALESCE(pc.seo_desc_tc, pc.resume_tc) as seo_desc_tc,
        								lang.id_lang,
 									lang.iso_lang,
 									lang.default_lang
 								FROM mc_thematic AS p
-								JOIN mc_thematic_content AS c ON(p.id_tc = c.id_tc) 
-								JOIN mc_lang AS lang ON(c.id_lang = lang.id_lang) 
+								JOIN mc_thematic_content AS pc ON(p.id_tc = pc.id_tc) 
+                                LEFT JOIN mc_thematic_img AS img ON (p.id_tc = img.id_tc)
+								JOIN mc_lang AS lang ON(pc.id_lang = lang.id_lang) 
                     			$conditions";
                         break;
+                    case 'imgs':
+                        $sql = 'SELECT 
+                            img.id_img,
+                            img.id_tc,
+                            img.name_img,
+                            COALESCE(pc.title_tc, pc.name_tc) as alt_img,
+                            COALESCE(pc.title_tc, pc.name_tc) as title_img,
+                            COALESCE(pc.title_tc, pc.name_tc) as caption_img,
+                            img.default_img,
+                            img.order_img,
+                            pc.id_lang,
+                            lang.iso_lang
+                        FROM mc_thematic AS p
+                        LEFT JOIN mc_thematic_content AS pc ON (p.id_tc = pc.id_tc)
+                        LEFT JOIN mc_lang AS lang ON(pc.id_lang = lang.id_lang)
+                        LEFT JOIN mc_thematic_img AS img ON (img.id_tc = p.id_tc)
+                        WHERE img.id_tc = :id AND lang.iso_lang = :iso
+                        ORDER BY img.order_img';
+                    break;
                     case 'pages_short':
                         $conditions = isset($config["conditions"]) ? $config["conditions"] : '';
                         $sql = "SELECT
@@ -165,25 +186,26 @@ class plugins_thematic_dbfront
                 switch ($config['type']) {
                     case 'thematic':
                         $sql = 'SELECT p.*,
-									c.name_tc,
-									c.title_tc,
-								   	c.url_tc,
-								   	c.resume_tc,
-								   	c.content_tc,
-								   	c.published_tc,
-								   	c.last_update,
-       								COALESCE(c.alt_img, c.name_tc) as alt_img,
-									COALESCE(c.title_img, c.alt_img, c.name_tc) as title_img,
-									COALESCE(c.caption_img, c.title_img, c.alt_img, c.name_tc) as caption_img,
-       								c.seo_title_tc,
-       								c.seo_desc_tc,
+									pc.name_tc,
+									pc.title_tc,
+								   	pc.url_tc,
+								   	pc.resume_tc,
+								   	pc.content_tc,
+								   	pc.published_tc,
+								   	pc.last_update,
+								   	img.name_img,
+                                    COALESCE(pc.title_tc, pc.name_tc) as alt_img,
+                                    COALESCE(pc.title_tc, pc.name_tc) as title_img,
+       								COALESCE(pc.seo_title_tc, pc.name_tc) as seo_title_tc,
+       								COALESCE(pc.seo_desc_tc, pc.resume_tc) as seo_desc_tc,
        								lang.id_lang,
 									lang.iso_lang,
 									lang.default_lang
 								FROM mc_thematic AS p
-								JOIN mc_thematic_content AS c ON(p.id_tc = c.id_tc) 
-								JOIN mc_lang AS lang ON(c.id_lang = lang.id_lang) 
-                                WHERE p.id_tc = :id AND lang.iso_lang = :iso AND c.published_tc = 1';
+								JOIN mc_thematic_content AS pc ON(p.id_tc = pc.id_tc) 
+								JOIN mc_lang AS lang ON(pc.id_lang = lang.id_lang) 
+								LEFT JOIN mc_thematic_img AS img ON (p.id_tc = img.id_tc)
+                                WHERE p.id_tc = :id AND lang.iso_lang = :iso AND pc.published_tc = 1';
                         break;
                         //COALESCE(c.seo_title_tc, c.name_tc) as seo_title_tc,
                     //       								COALESCE(c.seo_desc_tc, c.resume_tc) as seo_desc_tc,

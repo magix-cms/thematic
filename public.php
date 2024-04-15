@@ -29,8 +29,8 @@ class plugins_thematic_public extends plugins_thematic_dbfront
      *
      */
     private function loadModules() {
-        $this->module = $this->module instanceof frontend_model_module ? $this->module : new frontend_model_module($this->template);
-		if(empty($this->mods)) $this->mods = $this->module->load_module('thematic');
+        if(!isset($this->module)) $this->module = new frontend_model_module();
+        if(!isset($this->mods)) $this->mods = $this->module->load_module('thematic');
     }
 
 	/**
@@ -45,6 +45,12 @@ class plugins_thematic_public extends plugins_thematic_dbfront
 		return $this->data->getItems($type, $id, $context, $assign);
 	}
 
+    /**
+     * @return void
+     */
+    private function initImageComponent() {
+        if(!isset($this->imagesComponent)) $this->imagesComponent = new component_files_images($this->template);
+    }
 	/**
 	 * @return mixed
 	 */
@@ -74,18 +80,6 @@ class plugins_thematic_public extends plugins_thematic_dbfront
 		return $tcs;
 	}
 
-	/**
-	 * @param $conf
-	 * @throws Exception
-	 */
-	private function initImageComponents($conf)
-	{
-		$this->imagesComponent = new component_files_images($this->template);
-		$this->logo = new frontend_model_logo();
-		$this->imagePlaceHolder = $this->logo->getImagePlaceholder();
-		$this->imgPrefix = $this->imagesComponent->prefix();
-		$this->fetchConfig = $this->imagesComponent->getConfigItems($conf);
-	}
 
     /**
      * Formate les valeurs principales d'un élément suivant la ligne passées en paramètre
@@ -97,6 +91,7 @@ class plugins_thematic_public extends plugins_thematic_dbfront
      */
     public function setItemData($row,$current,$newRow = false)
     {
+        $this->initImageComponent();
         $string_format = new component_format_string();
         $data = null;
         $extwebp = 'webp';
@@ -128,26 +123,25 @@ class plugins_thematic_public extends plugins_thematic_dbfront
                 $data['iso'] = $row['iso_lang'];
                 $data['url'] = '/'.$row['iso_lang'].'/thematic/'.$row['id_tc'].'-'.$row['url_tc'].'/';
                 $data['active'] = $row['id_tc'] == $current['controller']['id'];
-                if (isset($row['img_tc'])) {
-                    // # return filename without extension
-                    $pathinfo = pathinfo($row['img_tc']);
-                    $filename = $pathinfo['filename'];
-
-                    foreach ($this->fetchConfig as $key => $value) {
-                        $imginfo = $this->imagesComponent->getImageInfos(component_core_system::basePath().'/upload/thematic/' . $row['id_tc'] . '/' . $this->imgPrefix[$value['type_img']] . $row['img_tc']);
-                        $data['img'][$value['type_img']]['src'] = '/upload/thematic/' . $row['id_tc'] . '/' . $this->imgPrefix[$value['type_img']] . $row['img_tc'];
-                        $data['img'][$value['type_img']]['src_webp'] = '/upload/thematic/' . $row['id_tc'] . '/' . $this->imgPrefix[$value['type_img']] . $filename. '.' .$extwebp;
-                        $data['img'][$value['type_img']]['w'] = $value['resize_img'] === 'basic' ? $imginfo['width'] : $value['width_img'];
-                        $data['img'][$value['type_img']]['h'] = $value['resize_img'] === 'basic' ? $imginfo['height'] : $value['height_img'];
-                        $data['img'][$value['type_img']]['crop'] = $value['resize_img'];
-                        $data['img'][$value['type_img']]['ext'] = mime_content_type(component_core_system::basePath().'/upload/thematic/' . $row['id_tc'] . '/' . $this->imgPrefix[$value['type_img']] . $row['img_tc']);
+                if (isset($row['img'])) {
+                    if(is_array($row['img'])) {
+                        foreach ($row['img'] as $val) {
+                            $image = $this->imagesComponent->setModuleImage('thematic','thematic',$val['name_img'],$row['id_tc'],$val['alt_img'] ?? $row['name_tc'], $val['title_img'] ?? $row['name_tc']);
+                            if($val['default_img']) {
+                                $data['img'] = $image;
+                                $image['default'] = 1;
+                            }
+                            $data['imgs'][] = $image;
+                        }
+                        $data['img']['default'] = $this->imagesComponent->setModuleImage('thematic','thematic');
                     }
-                    $data['img']['name'] = $row['img_tc'];
                 }
-                $data['img']['default'] = isset($this->imagePlaceHolder['pages']) ? $this->imagePlaceHolder['pages'] : '/skin/'.$this->template->theme.'/img/pages/default.png' ;
-                $data['img']['alt'] = $row['alt_img'];
-                $data['img']['title'] = $row['title_img'];
-                $data['img']['caption'] = $row['caption_img'];
+                else {
+                    if(isset($row['name_img'])) {
+                        $data['img'] = $this->imagesComponent->setModuleImage('thematic','thematic',$row['name_img'],$row['id_tc'],$row['alt_img'] ?? $row['name_tc'], $row['title_img'] ?? $row['name_tc']);
+                    }
+                    $data['img']['default'] = $this->imagesComponent->setModuleImage('thematic','thematic');
+                }
                 $data['content'] = $row['content_tc'];
                 $data['resume'] = $row['resume_tc'] ? $row['resume_tc'] : ($row['content_tc'] ? $string_format->truncate(strip_tags($row['content_tc'])) : '');
                 $data['menu'] = $row['menu_tc'];
@@ -202,7 +196,7 @@ class plugins_thematic_public extends plugins_thematic_dbfront
     /**
      * @return array|null
      */
-    private function getBuildRootItems() {
+    private function getRootData() {
         $collection = $this->getItems('root',['iso'=>$this->template->lang],'all',false);
 
         $newData = [];
@@ -214,118 +208,19 @@ class plugins_thematic_public extends plugins_thematic_dbfront
     }
 
     /**
-     * set Data from database
-     * @access private
+     * @return array
+     * @throws Exception
      */
-    private function getBuildThematicItems()
-    {
+    private function getThematicData(): array {
+
         $collection = $this->getItems('thematic',['id' => $this->id, 'iso' => $this->template->lang],'one',false);
-        $this->initImageComponents(array(
-            'module_img' => 'plugins',
-            'attribute_img' => 'thematic'
-        ));
+        $imgCollection = $this->getItems('imgs', array('id' => $this->id, 'iso' => $this->template->lang), 'all', false);
+        $collection['img'] = $imgCollection;
+        $this->template->breadcrumb->addItem($collection['name_tc']);//name_tc
+
         return $this->setItemData($collection,null);
     }
 
-    /**
-     * Parse data for frontend use
-     * @param $data
-     * @return mixed|null
-     * @throws Exception
-     */
-	public function parseData($data)
-	{
-		if($data){
-			// ** Loop management var
-			$deep = 1;
-			$deep_minus = $deep  - 1;
-			$deep_plus = $deep  + 1;
-			$pass_trough = 0;
-			$data_empty = false;
-
-			// ** Loop format & output var
-			$row = array();
-			$items = array();
-			$i[$deep] = 0;
-
-			do{
-				// *** loop management START
-				if ($pass_trough == 0){
-					// Si je n'ai plus de données à traiter je vide ma variable
-					$row[$deep] = null;
-				}else{
-					// Sinon j'active le traitement des données
-					$pass_trough = 0;
-				}
-
-				// Si je suis au premier niveaux et que je n'ai pas de donnée à traiter
-				if ($deep == 1 AND $row[$deep] == null) {
-					// récupération des données dans $data
-					$row[$deep] = array_shift($data);
-				}
-
-				// Si ma donnée possède des sous-donnée sous-forme de tableau
-				if (isset($row[$deep]['subdata']) ){
-					if (is_array($row[$deep]['subdata']) AND $row[$deep]['subdata'] != null){
-						// On monte d'une profondeur
-						$deep++;
-						$deep_minus++;
-						$deep_plus++;
-						// on récupére la  première valeur des sous-données en l'éffacant du tableau d'origine
-						$row[$deep] = array_shift($row[$deep_minus]['subdata']);
-						// Désactive le traitement des données
-						$pass_trough = 1;
-					}
-				}elseif($deep != 1){
-					if ( $row[$deep] == null) {
-						if ($row[$deep_minus]['subdata'] == null){
-							// Si je n'ai pas de sous-données & pas de données à traiter & pas de frères à récupérer dans mon parent
-							// ====> désactive le tableaux de sous-données du parent et retourne au niveau de mon parent
-							unset ($row[$deep_minus]['subdata']);
-							unset ($i[$deep]);
-							$deep--;
-							$deep_minus = $deep  - 1;
-							$deep_plus = $deep  + 1;
-						}else{
-							// Je récupère un frère dans mon parent
-							$row[$deep] = array_shift($row[$deep_minus]['subdata']);
-						}
-						// Désactive le traitement des données
-						$pass_trough = 1;
-					}
-				}
-				// *** loop management END
-
-				// *** list format START
-				if ($row[$deep] != null AND $pass_trough != 1){
-					$i[$deep]++;
-
-					// Construit doonées de l'item en array avec clée nominative unifiée ('name' => 'monname,'descr' => '<p>ma descr</p>,...)
-					$itemData = $this->setItemShortData($row[$deep]);
-
-					// Récupération des sous-données (enfants)
-					if(isset($items[$deep_plus]) != null) {
-						$itemData['subdata'] = $items[$deep_plus];
-						$items[$deep_plus] = null;
-					}else{
-						$subitems = null;
-					}
-
-					$items[$deep][] = $itemData;
-				}
-				// *** list format END
-
-				// Si $data est vide ET que je n'ai plus de données en traitement => arrête la boucle
-				if (empty($data) AND $row[1] == null){
-					$data_empty = true;
-				}
-
-			}while($data_empty == false);
-
-			return $items[$deep];
-		}
-		return null;
-	}
 
     /**
      * @param $id
@@ -353,48 +248,43 @@ class plugins_thematic_public extends plugins_thematic_dbfront
 
 		return $p;
 	}
-
+    public function setHrefLangData(array $row): array {
+        $arr = [];
+        foreach ($row as $item) {
+            $arr[$item['id_lang']] = '/'.$row['iso_lang'].'/thematic/'.$row['id_tc'].'-'.$row['url_tc'].'/';
+        }
+        return $arr;
+    }
     /**
      * Return data Lang
      * @param $type
      * @return array
      */
-    private function getBuildLangItems($type){
-        switch($type){
-            case 'cat':
-                $collection = $this->getItems('catLang',array(':id'=>$this->id),'all',false);
-                return $this->modelCatalog->setHrefLangCategoryData($collection);
-                break;
-            case 'product':
-                $collection = $this->getItems('productLang',array(':id'=>$this->id),'all',false);
-                return $this->modelCatalog->setHrefLangProductData($collection);
-                break;
-        }
+    private function getBuildLangItems(){
+        $collection = $this->getItems('langs',['id'=>$this->id],'all',false);
+        return $this->setHrefLangData($collection);
     }
 
-	/**
-	 * @param null $id
-	 * @return array
-	 * @throws Exception
-	 */
-    private function getBuildThematicList($id = null)
-    {
-        $conditions = ' WHERE lang.iso_lang = :iso AND c.published_tc = 1 AND p.id_parent '.($id === null ? 'IS NULL' : '= '.$id).' ORDER BY p.order_tc';
+    /**
+     * @param $id
+     * @param $limit
+     * @return array
+     * @throws Exception
+     */
+    public function getThematicList($id = null, $limit = 1) : array {
+        $limit = $limit ? ' LIMIT '.$limit : '';
+        $conditions = ' WHERE lang.iso_lang = :iso AND pc.published_tc = 1 AND p.id_parent '.($id === null ? 'IS NULL' : '= '.$id).' AND (img.default_img = 1 OR img.default_img IS NULL) ORDER BY p.order_tc ASC, p.id_tc DESC'.$limit;
         $collection = parent::fetchData(
             ['context' => 'all', 'type' => 'pages', 'conditions' => $conditions],
             ['iso' => $this->template->lang]
         );
-        $newarr = [];
+        $newArr = [];
         if(!empty($collection)) {
-            $this->initImageComponents([
-                'module_img' => 'plugins',
-                'attribute_img' => 'thematic'
-            ]);
             foreach ($collection as $item) {
-                $newarr[] = $this->setItemData($item,null);
+                $newArr[] = $this->setItemData($item,null);
             }
         }
-        return $newarr;
+        return $newArr;
     }
 
     /**
@@ -404,22 +294,24 @@ class plugins_thematic_public extends plugins_thematic_dbfront
      */
     private function getData($type)
     {
-        $data = $this->getBuildRootItems();
+        $data = $this->getRootData();
         $this->template->assign('root',$data,true);
         if($type !== 'root') {
-            $hreflang = $this->getBuildLangItems($type);
+            $hreflang = $this->getBuildLangItems();
             $this->template->assign('hreflang',$hreflang,true);
         }
 
         switch($type){
             case 'root':
-                $cats = $this->getBuildThematicList();
+                $this->template->breadcrumb->addItem($this->template->getConfigVars('thematic'));
+                $cats = $this->getThematicList();
                 $this->template->assign('thematics',$cats,true);
                 break;
             case 'thematic':
-                $data = $this->getBuildThematicItems();
+                $this->template->breadcrumb->addItem($this->template->getConfigVars('thematic'),'/'.$this->template->lang.'/thematic/');
+                $data = $this->getThematicData();
                 $this->template->assign('thematic',$data,true);
-				$cats = $this->getBuildThematicList($this->id);
+				$cats = $this->getThematicList($this->id);
 				$this->template->assign('thematics',$cats,true);
 
                 $lists = [];
@@ -437,63 +329,16 @@ class plugins_thematic_public extends plugins_thematic_dbfront
 
         if(isset($data['id_parent'])) {
             $this->id = $data['id_parent'];
-            $parent = $this->getBuildThematicItems();
+            $parent = $this->getThematicList();
             $this->template->assign('parent',$parent,true);
         }
-    }
-
-	/**
-	 * @throws Exception
-	 */
-	public function setBreadcrumb()
-	{
-		$iso = $this->template->lang;
-
-		$breadplugin = [];
-		$breadplugin[] = ['name' => $this->template->getConfigVars('thematic')];
-
-		if($this->id) {
-			$breadplugin[0]['url'] = http_url::getUrl().'/'.$iso.'/thematic/';
-			$breadplugin[0]['title'] = $this->template->getConfigVars('thematic');
-		}
-
-		if($this->id) {
-			$dataPage = $this->getItems('pages_short',['id' => $this->id, 'iso' => $iso],'all',false);
-
-			if($dataPage) {
-				$dataPage = $this->parseData($dataPage);
-
-				$ids = $this->getParents($this->id);
-				if(count($ids) > 1) {
-					array_shift($ids);
-					$ids = array_reverse($ids);
-
-					$data = $this->getItems('pages_short',['id' => $ids, 'iso' => $iso],'all',false);
-
-					if($data) {
-						$data = $this->parseData($data);
-						foreach($data as $item) {
-							$breadplugin[] = [
-                                'name' => $item['name'],
-                                'url' => $item['url'],
-                                'title' => $item['name']
-                            ];
-						}
-					}
-				}
-
-				$breadplugin[] = ['name' => $dataPage[0]['name']];
-			}
-		}
-
-		$this->template->assign('breadplugin', $breadplugin);
     }
 
     /**
      * @throws Exception
      */
     public function run() {
-    	$this->setBreadcrumb();
+    	//$this->setBreadcrumb();
         if(isset($this->id)) {
             $this->getData('thematic');
             $this->template->display('thematic/thematic.tpl');
